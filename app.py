@@ -1,111 +1,80 @@
 import streamlit as st
-import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input, decode_predictions
-from tensorflow.keras.preprocessing import image
+from ultralytics import YOLO
 from PIL import Image
 import numpy as np
-import pandas as pd
 
 # Page Configuration
-st.set_page_config(page_title="AI Image Detective Pro", page_icon="📸", layout="centered")
+st.set_page_config(page_title="Precision Vision AI", page_icon="🎯", layout="centered")
 
 # --- Model Loading (Cached) ---
 @st.cache_resource
 def load_model():
-    return MobileNetV2(weights='imagenet')
+    # YOLOv8 Nano model (yolov8n.pt) is incredibly light (~6MB) and fast
+    # It will automatically download the first time you run it
+    return YOLO('yolov8n.pt')
 
-st.title("📸 AI Image Detective Pro")
-st.write("Upload a file or use your live camera to let the Computer Vision engine detect objects accurately.")
+st.title("🎯 Precision AI Object Detector")
+st.write("Yeh engine poori image ko scan kar ke exact objects locate karta hai aur unke gird boxes banata hai.")
 
-with st.spinner("Initializing Upgraded Vision Engine..."):
+with st.spinner("Initializing YOLOv8 Engine..."):
     model = load_model()
 
 st.divider()
 
-# --- SIDEBAR: Configuration & Controls ---
-st.sidebar.header("⚙️ App Settings")
-
-# Feature 1: Confidence Threshold Slider
-threshold = st.sidebar.slider(
-    "Minimum Confidence Threshold (%)", 
-    min_value=5, 
-    max_value=100, 
-    value=20, 
-    step=5
-)
-st.sidebar.caption("Is percentage se kam confidence wali predictions filter out ho jayengi.")
-
-# --- MAIN UI: Input Selection ---
-input_mode = st.radio("Choose Input Method:", ["📁 Upload Image File", "📷 Use Live Camera"])
+# --- INPUT UI ---
+input_mode = st.radio("Choose Input Method:", ["📁 Upload Image", "📷 Live Camera"])
 
 img_source = None
 
-if input_mode == "📁 Upload Image File":
+if input_mode == "📁 Upload Image":
     uploaded_file = st.file_uploader("Upload an Image (JPG, PNG)", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         img_source = Image.open(uploaded_file)
 else:
-    # Feature 2: Live Camera Integration
     camera_file = st.camera_input("Take a snapshot")
     if camera_file:
         img_source = Image.open(camera_file)
 
-# --- Processing Pipeline ---
+# --- PROCESSING ---
 if img_source is not None:
-    # Display selected/captured image
-    st.image(img_source, caption="Target Image", use_container_width=True)
+    st.subheader("Original Image:")
+    st.image(img_source, use_container_width=True)
     
-    if st.button("🔍 Run AI Analysis", use_container_width=True):
-        with st.spinner("Analyzing pixels and calculating probabilities..."):
+    # Confidence Slider
+    conf_threshold = st.slider("Detection Confidence Threshold (%)", 5, 100, 25) / 100.0
+    
+    if st.button("🚀 Run Precision Detection", use_container_width=True):
+        with st.spinner("Detecting and drawing bounding boxes..."):
             
-            # 1. Image Preprocessing (MobileNetV2 requirements)
-            img_resized = img_source.resize((224, 224))
-            img_array = image.img_to_array(img_resized)
-            img_array = np.expand_dims(img_array, axis=0)
-            img_array = preprocess_input(img_array)
+            # YOLO expects RGB images (PIL is RGB by default)
+            # Run inference directly
+            results = model.predict(source=img_source, conf=conf_threshold)
             
-            # 2. Model Prediction
-            predictions = model.predict(img_array)
-            decoded_results = decode_predictions(predictions, top=5)[0] # Get top 5 candidates
+            # Get the plotted image array from results (Draws boxes & labels automatically)
+            annotated_img = results[0].plot()
             
-            # 3. Filtering via Threshold Slider
-            filtered_results = []
-            for res in decoded_results:
-                conf_percentage = float(res[2]) * 100
-                if conf_percentage >= threshold:
-                    filtered_results.append({
-                        "Object": res[1].replace("_", " ").title(),
-                        "Confidence (%)": round(conf_percentage, 2)
-                    })
-            
-            # 4. Display Results
             st.divider()
-            if len(filtered_results) == 0:
-                st.warning(f"Model ko is image me {threshold}% se zyada confidence ka koi object nahi mila. Settings se threshold kam kar ke dekhein.")
+            st.success("Detection Complete!")
+            st.subheader("🔍 AI Detection Results:")
+            
+            # Display the annotated image (YOLO's plot outputs BGR, so we specify channels)
+            st.image(annotated_img, channels="BGR", use_container_width=True)
+            
+            # Show detected items in a clean list
+            detected_items = []
+            for box in results[0].boxes:
+                class_id = int(box.cls[0])
+                class_name = model.names[class_id]
+                detected_items.append(class_name.title())
+            
+            if detected_items:
+                st.write("**Objects Found:**")
+                # Count frequencies of detected items
+                counts = {i:detected_items.count(i) for i in set(detected_items)}
+                for item, count in counts.items():
+                    st.write(f"✅ {count}x {item}")
             else:
-                st.success("Analysis Complete!")
-                st.subheader("📊 Detected Entities:")
-                
-                # Display individual progress bars
-                for item in filtered_results:
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        st.write(f"**{item['Object']}**")
-                    with col2:
-                        st.progress(item["Confidence (%)"] / 100, text=f"{item['Confidence (%)']}%")
-                
-                # Feature 3: Downloadable Data Report
-                st.write("")
-                df = pd.DataFrame(filtered_results)
-                csv_data = df.to_csv(index=False).encode('utf-8')
-                
-                st.download_button(
-                    label="📥 Download Prediction Report (CSV)",
-                    data=csv_data,
-                    file_name="ai_detection_report.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
+                st.warning("Koi specific object detect nahi hua. Try lowering the threshold or use a clearer image.")
 
 st.divider()
-st.caption("Engine: TensorFlow MobileNetV2 | UI: Streamlit Pro Layout")
+st.caption("Powered by Ultralytics YOLOv8 & Streamlit")
