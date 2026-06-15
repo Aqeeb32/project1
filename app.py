@@ -7,17 +7,17 @@ st.set_page_config(page_title="AI Prompt Enhancer", page_icon="✨", layout="cen
 # --- Model Loading (Cached for performance) ---
 @st.cache_resource
 def load_ai_model():
-    # google/flan-t5-small is free, lightweight, and great for text instructions
-    model_name = "google/flan-t5-small" 
+    # Updated to 'base' model for better reasoning while staying within free tier limits
+    model_name = "google/flan-t5-base" 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = TFAutoModelForSeq2SeqLM.from_pretrained(model_name)
     return tokenizer, model
 
 st.title("✨ AI Prompt Enhancer & Tester")
-st.write("Apna simple prompt yahan likhein, aur AI usko mazeed professional aur detailed bana dega!")
+st.write("Apna simple prompt yahan likhein, aur AI usko mazeed professional bana dega!")
 
 # Load model in the background with a spinner
-with st.spinner("Loading AI Model into memory... (First time only)"):
+with st.spinner("Loading AI Model into memory... (This takes a moment on startup)"):
     tokenizer, model = load_ai_model()
 
 st.divider()
@@ -26,14 +26,18 @@ st.divider()
 st.subheader("📝 Draft Your Prompt")
 user_prompt = st.text_area(
     "Enter your basic idea:", 
-    placeholder="e.g., write an email to my boss for 2 days leave...",
+    placeholder="e.g., I am applying in an IT company for an internship and I need a cover letter.",
     height=100
 )
 
 # Enhancement Options
 enhancement_style = st.selectbox(
     "How do you want to enhance it?", 
-    ["Make it more professional and detailed", "Make it creative and engaging", "Make it concise and clear"]
+    [
+        "Make it more professional and detailed", 
+        "Make it concise and clear",
+        "Improve grammar and structure"
+    ]
 )
 
 if st.button("🚀 Enhance Prompt", use_container_width=True):
@@ -41,18 +45,19 @@ if st.button("🚀 Enhance Prompt", use_container_width=True):
         st.warning("Pehle koi prompt to likhein!")
     else:
         with st.spinner("AI is working its magic..."):
-            # Prepare the instruction for the model
-            instruction = f"{enhancement_style}: {user_prompt}"
+            # Strict formatting to prevent the model from hallucinating
+            instruction = f"Task: {enhancement_style} this text.\nText: {user_prompt}\nRewritten Text:"
             
-            # Tokenize and Generate
+            # Tokenize Input
             inputs = tokenizer(instruction, return_tensors="tf")
             
-            # Generate output (adjust max_new_tokens for longer responses)
+            # Generate output with stricter parameters to stay on track
             outputs = model.generate(
                 inputs["input_ids"], 
                 max_new_tokens=150, 
-                temperature=0.7, 
-                do_sample=True
+                temperature=0.3,          # Lower temperature = less hallucination
+                do_sample=True,
+                repetition_penalty=1.2    # Prevents repeating the same phrases
             )
             
             # Decode the AI's response
@@ -66,4 +71,4 @@ if st.button("🚀 Enhance Prompt", use_container_width=True):
             st.code(enhanced_text, language="text")
             
 st.divider()
-st.caption("Powered by TensorFlow, Hugging Face (Flan-T5), and Streamlit.")
+st.caption("Powered by TensorFlow, Hugging Face (Flan-T5-Base), and Streamlit.")
